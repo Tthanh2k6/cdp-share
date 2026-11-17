@@ -1,0 +1,48 @@
+{
+  "name": "cdp-share",
+  "version": "0.1.0",
+  "description": "Share one approved Chrome remote-debugging connection between many CDP clients",
+  "keywords": [
+    "chrome",
+    "cdp",
+    "chrome-devtools-protocol",
+    "remote-debugging",
+    "mcp",
+    "playwright",
+    "puppeteer",
+    "ai-agent",
+    "proxy",
+    "multiplexer"
+  ],
+  "homepage": "https://github.com/Tthanh2k6/cdp-share#readme",
+  "bugs": {
+    "url": "https://github.com/Tthanh2k6/cdp-share/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Tthanh2k6/cdp-share.git"
+  },
+  "license": "MIT",
+  "author": "Trung Thanh Tran",
+  "type": "module",
+  "bin": {
+    "cdp-share": "src/cli.mjs"
+  },
+  "main": "./src/index.mjs",
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "test:soak": "node --test --test-concurrency=1 test/soak.test.mjs"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1",
+    "puppeteer-core": "^25.17.0"
+  }
+}
