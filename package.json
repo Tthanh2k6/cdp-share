@@ -35,7 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test --test-concurrency=1 test/",
+    "test": "node --test --test-concurrency=1 test/bridge.test.mjs test/cli.test.mjs test/security.test.mjs test/soak.test.mjs",
     "test:soak": "node --test --test-concurrency=1 test/soak.test.mjs"
   },
   "engines": {
