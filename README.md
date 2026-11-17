@@ -72,6 +72,7 @@ Remote debugging gives full control of the browser, including every site you are
 
 - It listens on `127.0.0.1` only.
 - It rejects requests whose `Host` header is not `localhost`, `127.0.0.1` or `[::1]` (DNS rebinding), and WebSocket upgrades with an `Origin` from a web page, as Chrome does.
+- Start it with `--token auto` unless you have a reason not to. Without a token, any program on this machine that can reach the port gets the already-approved connection, so it can read the cookies of every site you are signed in to without seeing Chrome's Allow prompt.
 - `--token auto` generates a token and requires it on every connection: `?token=` on the WebSocket URL, or an `Authorization: Bearer` / `x-cdp-share-token` header on HTTP. With a token set, use the printed ws URL, for example `chrome-devtools-mcp --wsEndpoint "ws://127.0.0.1:9333/devtools/browser/cdp-share?token=..."`, since `--browserUrl` cannot send headers.
 - `--log audit.jsonl` writes one JSON line per connect, disconnect and command: time, client id, optional client name (`?name=` on the ws URL), method, target or session id, ok or error. Command parameters are not logged, so typed text and passwords stay out of the file. The exceptions are target ids and the URL in `Target.*` commands and `Page.navigate` (a URL can itself contain secrets).
 - `--include-url <regex>` and `--exclude-url <regex>` hide tabs from clients: hidden tabs do not show up in `Target.getTargets`, target events or `/json/list`, and attaching to them fails.
