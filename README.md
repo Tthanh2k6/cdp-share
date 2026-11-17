@@ -113,7 +113,7 @@ await share.close();
 - Each client gets its own sessions after a tab exists, so an init script registered by one client can miss the first moments of a tab that another client created.
 - The audit log records commands, not events.
 - On Windows, `start` launches the daemon outside the calling process tree (through WMI), so it survives when an editor or terminal that started it closes. If that fails it falls back to a detached child process.
-- Tested on Windows 11 only so far. macOS and Linux should work; reports welcome.
+- CI runs the test suite on Linux, macOS and Windows (Node 20 and 22) against headless Chromium. Against a real, signed-in Chrome profile it has only been tried on Windows 11 so far; reports from other systems are welcome.
 
 ## Tested with
 
