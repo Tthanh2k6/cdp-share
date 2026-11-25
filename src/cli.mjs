@@ -23,15 +23,16 @@ Options:
   --log <file.jsonl>      audit log: connects, disconnects, commands (no params except Target.* and Page.navigate url)
   --include-url <regex>   show only targets whose URL matches
   --exclude-url <regex>   hide targets whose URL matches
+  --no-focus              keep Chrome in the background (force background: true on new tabs, no-op focus commands)
   --foreground            keep attached, log to stderr
   --timeout <sec>         how long start waits for Chrome's Allow prompt (default 90)
   --version, --help
 
-Environment: CDP_SHARE_PORT, CDP_SHARE_CHROME, CDP_SHARE_TOKEN, CDP_SHARE_LOG, CDP_SHARE_INCLUDE_URL, CDP_SHARE_EXCLUDE_URL, CDP_SHARE_HOME (state dir).
+Environment: CDP_SHARE_PORT, CDP_SHARE_CHROME, CDP_SHARE_TOKEN, CDP_SHARE_LOG, CDP_SHARE_INCLUDE_URL, CDP_SHARE_EXCLUDE_URL, CDP_SHARE_NO_FOCUS, CDP_SHARE_HOME (state dir).
 `;
 
 const VALUE_FLAGS = new Set(['port', 'chrome', 'token', 'log', 'include-url', 'exclude-url', 'timeout', 'home', 'token-file', 'out-file']);
-const BOOL_FLAGS = new Set(['foreground', 'help', 'version']);
+const BOOL_FLAGS = new Set(['foreground', 'no-focus', 'help', 'version']);
 
 function parseArgs(argv) {
   const out = { cmd: '', flags: {} };
@@ -79,6 +80,7 @@ function settings(flags) {
     log: flags.log ?? env.CDP_SHARE_LOG ?? '',
     includeUrl: flags['include-url'] ?? env.CDP_SHARE_INCLUDE_URL ?? '',
     excludeUrl: flags['exclude-url'] ?? env.CDP_SHARE_EXCLUDE_URL ?? '',
+    noFocus: Boolean(flags['no-focus'] || /^(1|true|yes)$/i.test(String(env.CDP_SHARE_NO_FOCUS ?? ''))),
     timeoutMs: Math.max(1, Number(flags.timeout ?? 90)) * 1000,
   };
 }
@@ -142,7 +144,7 @@ async function runDaemon(s, { foreground, generated = false }) {
   };
   try {
     handle = await startCdpShare({
-      chrome: s.chrome, port: s.port, token: s.token, log: s.log, includeUrl: s.includeUrl, excludeUrl: s.excludeUrl,
+      chrome: s.chrome, port: s.port, token: s.token, log: s.log, includeUrl: s.includeUrl, excludeUrl: s.excludeUrl, noFocus: s.noFocus,
       reconnectMs: 2500, logger,
       onUpstreamLost: () => finish(3),
       onServerLost: () => finish(4),
@@ -193,6 +195,7 @@ async function cmdStart(flags) {
   if (s.log) args.push('--log', path.resolve(s.log));
   if (s.includeUrl) args.push('--include-url', s.includeUrl);
   if (s.excludeUrl) args.push('--exclude-url', s.excludeUrl);
+  if (s.noFocus) args.push('--no-focus');
   let exited = null;
   let child = null;
   let wmiPid = 0;

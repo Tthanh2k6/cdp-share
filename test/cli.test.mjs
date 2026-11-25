@@ -39,6 +39,7 @@ describe('CLI: start / status / stop', () => {
     const h = await runCli(['--help']);
     assert.equal(h.code, 0);
     assert.match(h.out, /--include-url/);
+    assert.match(h.out, /--no-focus/);
     assert.equal((await runCli(['--nope'])).code, 2);
   });
 
@@ -50,7 +51,7 @@ describe('CLI: start / status / stop', () => {
 
   it('start detaches, prints urls and the generated token; status shows clients; stop frees the port', async () => {
     const env = { CDP_SHARE_HOME: home };
-    const started = await runCli(['start', '--port', String(port), '--chrome', up.wsUrl, '--token', 'auto'], env);
+    const started = await runCli(['start', '--port', String(port), '--chrome', up.wsUrl, '--token', 'auto', '--no-focus'], env);
     assert.equal(started.code, 0, `exit ${started.code}
 stdout: ${started.out}
 stderr: ${started.err}`);
@@ -69,6 +70,7 @@ stderr: ${started.err}`);
     const status = JSON.parse(st.out);
     assert.equal(status.upstream.connected, true);
     assert.equal(status.upstream.url, up.wsUrl);
+    assert.equal(status.noFocus, true);
     assert.ok(status.uptimeSec >= 0);
     const me = status.clients.find((x) => x.name === 'cli-test');
     assert.ok(me && me.id && me.connectedAt && typeof me.sessions === 'number');
