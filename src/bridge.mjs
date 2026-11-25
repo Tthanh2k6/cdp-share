@@ -75,6 +75,7 @@ export async function createBridge({
   token = '',
   includeUrl = null,
   excludeUrl = null,
+  noFocus = false,
   logFile = '',
   connectTimeoutMs = 60000,
   // The daemon sets reconnectMs and the two callbacks; library use keeps a bridge with a dead upstream alive.
@@ -601,6 +602,7 @@ export async function createBridge({
       internal: { sessions: owners.size, heldTargets: bridgeAttached.size, pendingCalls: pendingCalls.size, pendingMethods: [...pendingCalls.values()].map((p) => (p.client ? 'client:' : 'internal:') + (p.method || '?')).slice(0, 10) },
       upstream: { url: upstreamUrl, connected: upstreamConnected },
       tokenRequired: Boolean(token),
+      noFocus: Boolean(noFocus),
       filter: { includeUrl: includeRe ? includeRe.source : null, excludeUrl: excludeRe ? excludeRe.source : null },
       clients: [...clients].filter((c) => !c.closed).map((c) => ({
         id: c.id,
@@ -856,6 +858,19 @@ export async function createBridge({
           fail(clientMsgId, blockedMsg.startsWith('No target') ? -32602 : -32000, blockedMsg);
           local(false, blockedMsg);
           return;
+        }
+      }
+
+      if (noFocus) {
+        if (method === 'Page.bringToFront' || (!parsed.sessionId && method === 'Target.activateTarget')) {
+          reply(clientMsgId, {}, parsed.sessionId);
+          local(true);
+          return;
+        }
+        if (!parsed.sessionId && method === 'Target.createTarget') {
+          const params = (parsed.params && typeof parsed.params === 'object') ? { ...parsed.params } : {};
+          if (!params.newWindow) params.background = true;
+          parsed = { ...parsed, params };
         }
       }
 

@@ -65,6 +65,7 @@ All clients see the same tabs. Each client's commands, events and one-time page 
 - `Browser.close` from a client is ignored, so a script that ends with `browser.close()` does not close your Chrome.
 - Browser contexts a client creates (for example `browser.newContext()` in Playwright) are closed when that client disconnects. Tabs in the default context stay open.
 - Commands still in flight when a client disconnects are dropped, so nothing piles up in the daemon.
+- With `--no-focus`, new tabs created via `Target.createTarget` are opened with `background: true` (unless `newWindow: true`) and `Target.activateTarget` / `Page.bringToFront` are answered with `{}` instead of bringing Chrome to the foreground. Useful on macOS and desktop setups when background agents should not steal window focus.
 
 ## Security
 
@@ -93,11 +94,12 @@ cdp-share stop [--port N]     stop the daemon
 --log <file.jsonl>      audit log
 --include-url <regex>   show only tabs whose URL matches
 --exclude-url <regex>   hide tabs whose URL matches
+--no-focus              keep Chrome in the background (background: true on new tabs, no-op focus commands)
 --foreground            stay attached and log to stderr
 --timeout <sec>         how long start waits for the Allow click (default 90)
 ```
 
-Every option also has an environment variable: `CDP_SHARE_PORT`, `CDP_SHARE_CHROME`, `CDP_SHARE_TOKEN`, `CDP_SHARE_LOG`, `CDP_SHARE_INCLUDE_URL`, `CDP_SHARE_EXCLUDE_URL`, and `CDP_SHARE_HOME` for the state directory.
+Every option also has an environment variable: `CDP_SHARE_PORT`, `CDP_SHARE_CHROME`, `CDP_SHARE_TOKEN`, `CDP_SHARE_LOG`, `CDP_SHARE_INCLUDE_URL`, `CDP_SHARE_EXCLUDE_URL`, `CDP_SHARE_NO_FOCUS`, and `CDP_SHARE_HOME` for the state directory.
 
 From Node:
 

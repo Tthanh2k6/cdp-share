@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import puppeteer from 'puppeteer-core';
 import { chromium } from 'playwright-core';
 import { startCdpShare } from '../src/index.mjs';
 import { auditParams } from '../src/bridge.mjs';
+import { WS_GUID, WsConnection } from '../src/ws.mjs';
 import { cap, freePort, launchUpstream, rawCdp, rawHttp, sleep, startSite, tmpDir } from './helpers.mjs';
 
 describe('token, Host and Origin checks', () => {
@@ -250,5 +253,78 @@ describe('audit log', () => {
     assert.equal(auditParams('Input.insertText', { text: 'x' }), undefined);
     assert.deepEqual(auditParams('Target.createTarget', { url: 'http://x/', message: 'nope' }), { url: 'http://x/' });
     assert.equal(auditParams('Network.setCookie', { value: 'x' }), undefined);
+  });
+});
+
+describe('--no-focus', () => {
+  it('forces background: true on Target.createTarget (except newWindow) and drops focus commands before upstream', async () => {
+    const received = [];
+    const mockServer = http.createServer();
+    mockServer.on('upgrade', (req, socket) => {
+      const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + WS_GUID).digest('base64');
+      socket.write(['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${accept}`, '\r\n'].join('\r\n'));
+      const ws = new WsConnection(socket);
+      ws.onMessage = (raw) => {
+        const m = JSON.parse(raw);
+        received.push(m);
+        if (m.method === 'Browser.getVersion') return ws.send(JSON.stringify({ id: m.id, result: { product: 'MockChrome' } }));
+        if (m.method === 'Target.createTarget') return ws.send(JSON.stringify({ id: m.id, result: { targetId: 't-1' } }));
+        if (m.method === 'Target.attachToTarget') return ws.send(JSON.stringify({ id: m.id, result: { sessionId: 's-1' } }));
+        ws.send(JSON.stringify({ id: m.id, ...(m.sessionId ? { sessionId: m.sessionId } : {}), result: {} }));
+      };
+    });
+    await new Promise((r) => mockServer.listen(0, '127.0.0.1', r));
+    const upPort = mockServer.address().port;
+    const share = await startCdpShare({ chrome: `ws://127.0.0.1:${upPort}/devtools/browser/mock`, port: await freePort(), noFocus: true });
+    try {
+      assert.equal(share.status().noFocus, true);
+      const c = await rawCdp(share.wsUrl);
+      assert.equal(c.status, 101);
+
+      const created = await c.send('Target.createTarget', { url: 'https://example.com' });
+      assert.equal(created.result.targetId, 't-1');
+      const createdWin = await c.send('Target.createTarget', { url: 'https://example.com', newWindow: true });
+      assert.equal(createdWin.result.targetId, 't-1');
+
+      const att = await c.send('Target.attachToTarget', { targetId: 't-1', flatten: true });
+      const sid = att.result.sessionId;
+      assert.deepEqual((await c.send('Target.activateTarget', { targetId: 't-1' })).result, {});
+      assert.deepEqual((await c.send('Page.bringToFront', {}, sid)).result, {});
+      c.close();
+
+      const creates = received.filter((m) => m.method === 'Target.createTarget');
+      assert.equal(creates.length, 2);
+      assert.equal(creates[0].params.background, true);
+      assert.equal(creates[1].params.newWindow, true);
+      assert.equal(creates[1].params.background, undefined);
+      assert.equal(received.some((m) => m.method === 'Target.activateTarget'), false, 'Target.activateTarget not forwarded');
+      assert.equal(received.some((m) => m.method === 'Page.bringToFront'), false, 'Page.bringToFront not forwarded');
+    } finally {
+      await share.close();
+      await new Promise((r) => { mockServer.closeAllConnections?.(); mockServer.close(r); });
+    }
+  });
+
+  it('still rejects Target.activateTarget on hidden targets when combined with --exclude-url', async () => {
+    const up = await launchUpstream();
+    const site = await startSite();
+    let share;
+    try {
+      const secretPage = await up.browser.newPage();
+      await secretPage.goto(site.url('/secret/bank'));
+      const raw = await rawCdp(up.wsUrl);
+      const secretId = (await raw.send('Target.getTargets')).result.targetInfos.find((t) => t.url.includes('/secret/')).targetId;
+      raw.close();
+
+      share = await startCdpShare({ chrome: up.wsUrl, port: await freePort(), excludeUrl: '/secret/', noFocus: true });
+      const c = await rawCdp(share.wsUrl);
+      const r = await c.send('Target.activateTarget', { targetId: secretId });
+      assert.equal(r.error?.code, -32602);
+      c.close();
+    } finally {
+      await share?.close().catch(() => {});
+      await site.close();
+      await up.close();
+    }
   });
 });
