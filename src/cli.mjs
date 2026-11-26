@@ -23,16 +23,17 @@ Options:
   --log <file.jsonl>      audit log: connects, disconnects, commands (no params except Target.* and Page.navigate url)
   --include-url <regex>   show only targets whose URL matches
   --exclude-url <regex>   hide targets whose URL matches
-  --no-focus              keep Chrome in the background (force background: true on new tabs, no-op focus commands)
+  --no-focus              keep Chrome in the background (force background: true on new tabs, no-op focus commands, enable focus emulation)
+  --no-focus-emulation    with --no-focus, do not send Emulation.setFocusEmulationEnabled({ enabled: true })
   --foreground            keep attached, log to stderr
   --timeout <sec>         how long start waits for Chrome's Allow prompt (default 90)
   --version, --help
 
-Environment: CDP_SHARE_PORT, CDP_SHARE_CHROME, CDP_SHARE_TOKEN, CDP_SHARE_LOG, CDP_SHARE_INCLUDE_URL, CDP_SHARE_EXCLUDE_URL, CDP_SHARE_NO_FOCUS, CDP_SHARE_HOME (state dir).
+Environment: CDP_SHARE_PORT, CDP_SHARE_CHROME, CDP_SHARE_TOKEN, CDP_SHARE_LOG, CDP_SHARE_INCLUDE_URL, CDP_SHARE_EXCLUDE_URL, CDP_SHARE_NO_FOCUS, CDP_SHARE_NO_FOCUS_EMULATION, CDP_SHARE_HOME (state dir).
 `;
 
 const VALUE_FLAGS = new Set(['port', 'chrome', 'token', 'log', 'include-url', 'exclude-url', 'timeout', 'home', 'token-file', 'out-file']);
-const BOOL_FLAGS = new Set(['foreground', 'no-focus', 'help', 'version']);
+const BOOL_FLAGS = new Set(['foreground', 'no-focus', 'no-focus-emulation', 'help', 'version']);
 
 function parseArgs(argv) {
   const out = { cmd: '', flags: {} };
@@ -73,6 +74,11 @@ function readState(port) {
 function settings(flags) {
   const port = Number(flags.port ?? env.CDP_SHARE_PORT ?? DEFAULT_PORT);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error(`invalid --port ${flags.port}`);
+  const noFocusEmulation = Boolean(
+    flags['no-focus-emulation'] ||
+    /^(1|true|yes)$/i.test(String(env.CDP_SHARE_NO_FOCUS_EMULATION ?? '')) ||
+    /^(0|false|no)$/i.test(String(env.CDP_SHARE_FOCUS_EMULATION ?? ''))
+  );
   return {
     port,
     chrome: flags.chrome ?? env.CDP_SHARE_CHROME ?? '',
@@ -81,6 +87,8 @@ function settings(flags) {
     includeUrl: flags['include-url'] ?? env.CDP_SHARE_INCLUDE_URL ?? '',
     excludeUrl: flags['exclude-url'] ?? env.CDP_SHARE_EXCLUDE_URL ?? '',
     noFocus: Boolean(flags['no-focus'] || /^(1|true|yes)$/i.test(String(env.CDP_SHARE_NO_FOCUS ?? ''))),
+    noFocusEmulation,
+    focusEmulation: !noFocusEmulation,
     timeoutMs: Math.max(1, Number(flags.timeout ?? 90)) * 1000,
   };
 }
@@ -144,7 +152,8 @@ async function runDaemon(s, { foreground, generated = false }) {
   };
   try {
     handle = await startCdpShare({
-      chrome: s.chrome, port: s.port, token: s.token, log: s.log, includeUrl: s.includeUrl, excludeUrl: s.excludeUrl, noFocus: s.noFocus,
+      chrome: s.chrome, port: s.port, token: s.token, log: s.log, includeUrl: s.includeUrl, excludeUrl: s.excludeUrl,
+      noFocus: s.noFocus, focusEmulation: s.focusEmulation, noFocusEmulation: s.noFocusEmulation,
       reconnectMs: 2500, logger,
       onUpstreamLost: () => finish(3),
       onServerLost: () => finish(4),
@@ -196,6 +205,7 @@ async function cmdStart(flags) {
   if (s.includeUrl) args.push('--include-url', s.includeUrl);
   if (s.excludeUrl) args.push('--exclude-url', s.excludeUrl);
   if (s.noFocus) args.push('--no-focus');
+  if (s.noFocusEmulation) args.push('--no-focus-emulation');
   let exited = null;
   let child = null;
   let wmiPid = 0;

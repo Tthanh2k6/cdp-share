@@ -35,11 +35,12 @@ describe('CLI: start / status / stop', () => {
   });
 
   it('--version and --help', async () => {
-    assert.equal((await runCli(['--version'])).out.trim(), '0.1.0');
+    assert.equal((await runCli(['--version'])).out.trim(), '0.2.1');
     const h = await runCli(['--help']);
     assert.equal(h.code, 0);
     assert.match(h.out, /--include-url/);
     assert.match(h.out, /--no-focus/);
+    assert.match(h.out, /--no-focus-emulation/);
     assert.equal((await runCli(['--nope'])).code, 2);
   });
 

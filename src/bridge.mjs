@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import { WS_GUID, WsConnection } from './ws.mjs';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.2.1';
 export const DEFAULT_PORT = 9333; // not 9224: turbo-browser-mcp's own bridge uses that port
 const BROWSER_PATH = '/devtools/browser/cdp-share';
 const RESUME_FALLBACK_MS = 10000;
@@ -76,6 +76,8 @@ export async function createBridge({
   includeUrl = null,
   excludeUrl = null,
   noFocus = false,
+  focusEmulation = true,
+  noFocusEmulation = false,
   logFile = '',
   connectTimeoutMs = 60000,
   // The daemon sets reconnectMs and the two callbacks; library use keeps a bridge with a dead upstream alive.
@@ -92,6 +94,8 @@ export async function createBridge({
   const includeRe = compileRe(includeUrl, 'include-url');
   const excludeRe = compileRe(excludeUrl, 'exclude-url');
   const filterActive = Boolean(includeRe || excludeRe);
+  const emulateFocus = Boolean(noFocus) && focusEmulation !== false && !noFocusEmulation;
+  const focusEmulatedSessions = new Set();
   const startedAt = Date.now();
 
   function targetAllowed(info) {
@@ -144,6 +148,13 @@ export async function createBridge({
       pendingCalls.set(id, { client: null, clientMsgId: null, internalResolve: resolve, method: `${method}${sessionId ? '@session' : ''}` });
       sendUpstreamRaw({ id, method, params, ...(sessionId ? { sessionId } : {}) });
     });
+  }
+
+  function enableFocusEmulation(sessionId, targetType) {
+    if (!emulateFocus || !sessionId || focusEmulatedSessions.has(sessionId)) return;
+    if (targetType && targetType !== 'page') return;
+    focusEmulatedSessions.add(sessionId);
+    void callUpstreamInternal('Emulation.setFocusEmulationEnabled', { enabled: true }, sessionId);
   }
 
   // Deliver to a client. A page-scoped client (/devtools/page/<id>) never sees its session id.
@@ -212,6 +223,7 @@ export async function createBridge({
     }
     owners.set(sessionId, { client, targetId, root: true });
     client.sessions.add(sessionId);
+    enableFocusEmulation(sessionId, params.targetInfo?.type);
     if (waiting && params.sessionId) resumes.get(params.sessionId)?.waiting.add(client);
     client.send(
       JSON.stringify({
@@ -278,6 +290,7 @@ export async function createBridge({
     disposeClientContexts(client);
     for (const sid of client.sessions) {
       owners.delete(sid);
+      focusEmulatedSessions.delete(sid);
       void callUpstreamInternal('Target.detachFromTarget', { sessionId: sid });
     }
     client.sessions.clear();
@@ -302,8 +315,13 @@ export async function createBridge({
         owners.set(msg.result.sessionId, { client: c, targetId: pending.targetId, root: false });
         c.sessions.add(msg.result.sessionId);
         if (pending.targetId) c.allowedTargets.add(pending.targetId);
+        if (pending.method === 'Target.attachToTarget') {
+          const tInfo = pending.targetId ? discoveredTargets.get(pending.targetId) : null;
+          enableFocusEmulation(msg.result.sessionId, tInfo?.type);
+        }
       } else if (pending.method === 'Target.detachFromTarget' && pending.detachSessionId) {
         owners.delete(pending.detachSessionId);
+        focusEmulatedSessions.delete(pending.detachSessionId);
         c.sessions.delete(pending.detachSessionId);
       }
     } else if (c && pending.method === 'Target.createBrowserContext' && msg.result?.browserContextId) {
@@ -603,6 +621,7 @@ export async function createBridge({
       upstream: { url: upstreamUrl, connected: upstreamConnected },
       tokenRequired: Boolean(token),
       noFocus: Boolean(noFocus),
+      focusEmulation: emulateFocus,
       filter: { includeUrl: includeRe ? includeRe.source : null, excludeUrl: excludeRe ? excludeRe.source : null },
       clients: [...clients].filter((c) => !c.closed).map((c) => ({
         id: c.id,
@@ -758,6 +777,7 @@ export async function createBridge({
         client.pageSession = res.sessionId;
         owners.set(res.sessionId, { client, targetId: pageMatch[1], root: false });
         client.sessions.add(res.sessionId);
+        enableFocusEmulation(res.sessionId, 'page');
       })();
     }
 
@@ -863,6 +883,15 @@ export async function createBridge({
 
       if (noFocus) {
         if (method === 'Page.bringToFront' || (!parsed.sessionId && method === 'Target.activateTarget')) {
+          if (parsed.sessionId) {
+            enableFocusEmulation(parsed.sessionId, 'page');
+          } else if (method === 'Target.activateTarget' && parsed.params?.targetId) {
+            for (const [sid, o] of owners) {
+              if (o.client === client && o.targetId === parsed.params.targetId) {
+                enableFocusEmulation(sid, 'page');
+              }
+            }
+          }
           reply(clientMsgId, {}, parsed.sessionId);
           local(true);
           return;

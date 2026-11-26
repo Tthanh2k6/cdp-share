@@ -15,13 +15,15 @@ export const generateToken = () => crypto.randomBytes(24).toString('base64url');
  */
 export async function startCdpShare(options = {}) {
   const {
-    chrome, port = DEFAULT_PORT, host = '127.0.0.1', includeUrl = null, excludeUrl = null, noFocus = false, log = '', userDataDirs,
+    chrome, port = DEFAULT_PORT, host = '127.0.0.1', includeUrl = null, excludeUrl = null, noFocus = false,
+    focusEmulation = true, noFocusEmulation = false, log = '', userDataDirs,
     reconnectMs = 0, onUpstreamLost = null, onServerLost = null, logger = null, connectTimeoutMs = 60000,
   } = options;
   const token = options.token === 'auto' ? generateToken() : options.token || '';
   const upstreamUrl = await resolveUpstream(chrome, userDataDirs ? { userDataDirs } : {});
   const b = await createBridge({
-    upstreamUrl, port, host, token, includeUrl, excludeUrl, noFocus, logFile: log, reconnectMs, onUpstreamLost, onServerLost, log: logger, connectTimeoutMs,
+    upstreamUrl, port, host, token, includeUrl, excludeUrl, noFocus, focusEmulation, noFocusEmulation,
+    logFile: log, reconnectMs, onUpstreamLost, onServerLost, log: logger, connectTimeoutMs,
   });
   return { url: b.httpUrl, wsUrl: b.wsUrl, server: b.server, port: b.port, token, upstreamUrl, status: b.status, close: b.close };
 }

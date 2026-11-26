@@ -299,9 +299,73 @@ describe('--no-focus', () => {
       assert.equal(creates[1].params.background, undefined);
       assert.equal(received.some((m) => m.method === 'Target.activateTarget'), false, 'Target.activateTarget not forwarded');
       assert.equal(received.some((m) => m.method === 'Page.bringToFront'), false, 'Page.bringToFront not forwarded');
+      const focusEmu = received.filter((m) => m.method === 'Emulation.setFocusEmulationEnabled');
+      assert.equal(focusEmu.length, 1, 'Emulation.setFocusEmulationEnabled sent once on attach');
+      assert.equal(focusEmu[0].sessionId, 's-1');
+      assert.deepEqual(focusEmu[0].params, { enabled: true });
     } finally {
       await share.close();
       await new Promise((r) => { mockServer.closeAllConnections?.(); mockServer.close(r); });
+    }
+  });
+
+  it('can disable automatic Emulation.setFocusEmulationEnabled via focusEmulation: false or noFocusEmulation: true', async () => {
+    const received = [];
+    const mockServer = http.createServer();
+    mockServer.on('upgrade', (req, socket) => {
+      const accept = crypto.createHash('sha1').update(req.headers['sec-websocket-key'] + WS_GUID).digest('base64');
+      socket.write(['HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket', 'Connection: Upgrade', `Sec-WebSocket-Accept: ${accept}`, '\r\n'].join('\r\n'));
+      const ws = new WsConnection(socket);
+      ws.onMessage = (raw) => {
+        const m = JSON.parse(raw);
+        received.push(m);
+        if (m.method === 'Browser.getVersion') return ws.send(JSON.stringify({ id: m.id, result: { product: 'MockChrome' } }));
+        if (m.method === 'Target.attachToTarget') return ws.send(JSON.stringify({ id: m.id, result: { sessionId: 's-nofocus-emu' } }));
+        ws.send(JSON.stringify({ id: m.id, ...(m.sessionId ? { sessionId: m.sessionId } : {}), result: {} }));
+      };
+    });
+    await new Promise((r) => mockServer.listen(0, '127.0.0.1', r));
+    const upPort = mockServer.address().port;
+    const share = await startCdpShare({
+      chrome: `ws://127.0.0.1:${upPort}/devtools/browser/mock`,
+      port: await freePort(),
+      noFocus: true,
+      noFocusEmulation: true,
+    });
+    try {
+      assert.equal(share.status().noFocus, true);
+      assert.equal(share.status().focusEmulation, false);
+      const c = await rawCdp(share.wsUrl);
+      const att = await c.send('Target.attachToTarget', { targetId: 't-1', flatten: true });
+      assert.equal(att.result.sessionId, 's-nofocus-emu');
+      assert.deepEqual((await c.send('Page.bringToFront', {}, 's-nofocus-emu')).result, {});
+      c.close();
+      assert.equal(received.some((m) => m.method === 'Emulation.setFocusEmulationEnabled'), false);
+    } finally {
+      await share.close();
+      await new Promise((r) => { mockServer.closeAllConnections?.(); mockServer.close(r); });
+    }
+  });
+
+  it('auto-enables focus emulation on Playwright background tabs under --no-focus so document.hasFocus() is true', async () => {
+    const up = await launchUpstream();
+    const site = await startSite();
+    const share = await startCdpShare({ chrome: up.wsUrl, port: await freePort(), noFocus: true });
+    let pw;
+    try {
+      const fgPage = await up.browser.newPage();
+      await fgPage.goto(site.url('/public/fg'));
+      pw = await cap(chromium.connectOverCDP(share.url), 15000, 'pw connect');
+      const bgPage = await cap(pw.contexts()[0].newPage(), 10000, 'pw newPage');
+      await bgPage.goto(site.url('/public/bg'));
+      assert.equal(await cap(bgPage.evaluate(() => document.hasFocus())), true);
+      await bgPage.close();
+      await fgPage.close();
+    } finally {
+      await pw?.close().catch(() => {});
+      await share.close();
+      await site.close();
+      await up.close();
     }
   });
 

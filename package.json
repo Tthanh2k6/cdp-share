@@ -1,6 +1,6 @@
 {
   "name": "cdp-share",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Share one approved Chrome remote-debugging connection between many CDP clients",
   "keywords": [
     "chrome",
