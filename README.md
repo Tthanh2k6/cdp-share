@@ -18,7 +18,7 @@ No runtime dependencies. Node 20 or later.
    It prints the address to use and goes to the background:
 
    ```
-   cdp-share 0.1.0 running
+   cdp-share 0.2.1 running
      http: http://127.0.0.1:9333
      ws:   ws://127.0.0.1:9333/devtools/browser/cdp-share
    ```
@@ -126,6 +126,12 @@ await share.close();
 - The test suite: Playwright 1.65 and Puppeteer 25 against headless Chromium and Google Chrome 157, plus a soak test (3 clients, 30 rounds) that checks for leftover contexts, sessions and memory growth (`CDP_SHARE_SOAK=1 npm run test:soak`).
 
 cdp-share started as the keep-alive bridge inside [turbo-browser-mcp](https://github.com/Tthanh2k6/turbo-browser-mcp).
+
+## Releases
+
+- **0.2.1 (2026-11-26):** With `--no-focus`, attached page sessions automatically send `Emulation.setFocusEmulationEnabled({ enabled: true })` so background tabs keep `document.hasFocus() === true` and continue rendering without blank screenshots. Pass `--no-focus-emulation` (`CDP_SHARE_NO_FOCUS_EMULATION=1`) to turn focus emulation off.
+- **0.2.0 (2026-11-26):** Added `--no-focus` (`CDP_SHARE_NO_FOCUS`) to open new `Target.createTarget` tabs in the background and answer `Target.activateTarget` / `Page.bringToFront` without stealing window focus (#1, thanks to Matt Van Horn / `@mvanhorn`).
+- **0.1.0 (2026-11-17):** Initial release: single approved Chrome remote-debugging connection multiplexed across CDP clients with isolated sessions, token auth, URL filtering, and JSONL audit log.
 
 ## License
 
